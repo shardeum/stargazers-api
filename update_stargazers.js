@@ -11,6 +11,7 @@ const accessTokens = [
   process.env.GITHUB_ACCESS_TOKEN_2,
   process.env.GITHUB_ACCESS_TOKEN_3,
   process.env.GITHUB_ACCESS_TOKEN_4,
+  process.env.GITHUB_ACCESS_TOKEN_5,
 ];
 
 let currentTokenIndex = 0;
@@ -78,6 +79,54 @@ async function fetchAllStargazers(retries = 3) {
   return allStargazers;
 }
 
+// async function updateDatabase() {
+//   const db = await open({
+//     filename: "./stargazers.db",
+//     driver: sqlite3.Database,
+//   });
+
+//   try {
+//     const stargazers = await fetchAllStargazers();
+
+//     await db.run("BEGIN TRANSACTION");
+
+//     // Clear the incoming_data_table
+//     await db.run("DELETE FROM incoming_data_table");
+
+//     // Insert new data into incoming_data_table
+//     const stmt = db.prepare(
+//       "INSERT OR IGNORE INTO incoming_data_table (username) VALUES (?)"
+//     );
+
+//     try {
+//       for (const username of stargazers) {
+//         await stmt.run(username);
+//       }
+//     } finally {
+//       await stmt.finalize();
+//     }
+
+//     // Replace existing_stargazers_table with incoming_data_table
+//     await db.run("DELETE FROM existing_stargazers_table");
+//     await db.run(
+//       "INSERT INTO existing_stargazers_table SELECT * FROM incoming_data_table"
+//     );
+
+//     await db.run("COMMIT");
+
+//     console.log(`Updated stargazers database with ${stargazers.length} users`);
+//   } catch (error) {
+//     await db.run("ROLLBACK");
+//     console.error("Error updating database:", error);
+//   } finally {
+//     try {
+//       await db.close();
+//     } catch (closeError) {
+//       console.error("Error closing database:", closeError);
+//     }
+//   }
+// }
+
 async function updateDatabase() {
   const db = await open({
     filename: "./stargazers.db",
@@ -94,12 +143,16 @@ async function updateDatabase() {
 
     // Insert new data into incoming_data_table
     const stmt = await db.prepare(
-      "INSERT INTO incoming_data_table (username) VALUES (?)"
+      "INSERT OR IGNORE INTO incoming_data_table (username) VALUES (?)"
     );
-    for (const username of stargazers) {
-      await stmt.run(username);
+
+    try {
+      for (const username of stargazers) {
+        await stmt.run(username);
+      }
+    } finally {
+      await stmt.finalize();
     }
-    await stmt.finalize();
 
     // Replace existing_stargazers_table with incoming_data_table
     await db.run("DELETE FROM existing_stargazers_table");
@@ -114,10 +167,22 @@ async function updateDatabase() {
     await db.run("ROLLBACK");
     console.error("Error updating database:", error);
   } finally {
-    await db.close();
+    try {
+      await db.close();
+    } catch (closeError) {
+      console.error("Error closing database:", closeError);
+    }
   }
 }
 
-console.log("Worker is running");
-updateDatabase();
-setInterval(updateDatabase, 60 * 1000); // Run every minute
+async function main() {
+  console.log("Worker is running");
+  try {
+    await updateDatabase();
+  } catch (error) {
+    console.error("Error in main execution:", error);
+  }
+}
+
+main();
+setInterval(main, 1000 * 60 * 4); // Run every 4 minutes
